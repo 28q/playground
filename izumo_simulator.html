@@ -27,9 +27,9 @@ details{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-t
 <main class="wrap">
 <div class="grid">
 <section class="panel">
-<h2>選手入力 <span class="pill">最大9人 / 出走6人</span></h2>
-<div class="table-wrap"><table id="athTable"><thead><tr><th>使用</th><th>名前</th><th>Speed</th><th>Stamina</th><th>Mental</th><th>1・2区補正</th><th>5・6区補正</th></tr></thead><tbody></tbody></table></div>
-<div class="tiny" style="margin-top:7px">補正は解析した MemberSkill の効果を直接指定します（+3 / 0 / -3）。3・4区にはこの補正は入りません。</div>
+<h2>選手入力 <span class="pill">最大9人から6人を自動選抜</span></h2>
+<div class="table-wrap"><table id="athTable"><thead><tr><th>探索対象</th><th>名前</th><th>Speed</th><th>Stamina</th><th>Mental</th><th>1・2区補正</th><th>5・6区補正</th></tr></thead><tbody></tbody></table></div>
+<div class="tiny" style="margin-top:7px">チェックした選手は全員、控えも含めて最適配置の候補になります。最大9人から6人を自動選抜して区間配置まで探索します。補正は解析した MemberSkill の効果を直接指定します（+3 / 0 / -3）。3・4区にはこの補正は入りません。</div>
 
 <h3>計算設定</h3>
 <div class="controls">
@@ -64,7 +64,7 @@ details{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-t
 <section id="results" class="panel hidden" style="margin-top:14px">
 <h2>最適配置</h2>
 <div class="result-head"><span>推定合計期待タイム</span><span id="bestExpected" class="big good"></span><span id="bestExpectedSec" class="tiny"></span></div>
-<div class="table-wrap"><table><thead><tr><th>区間</th><th>選手</th><th>基礎status</th><th>区間補正</th><th>最適化時 期待秒</th><th>最終MC 期待秒</th></tr></thead><tbody id="lineupBody"></tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>区間</th><th>選手</th><th>基礎status</th><th>区間補正</th><th>最適化時 期待秒</th><th>最終MC 期待秒</th></tr></thead><tbody id="lineupBody"></tbody></table></div><div id="benchResult" class="tiny" style="margin-top:8px"></div>
 <details><summary>選手×区間 期待タイム行列</summary><div class="table-wrap" style="margin-top:8px"><table id="matrixTable"></table></div></details>
 
 <h3>合計タイム分布</h3>
@@ -92,7 +92,7 @@ const LOGFACT = new Float64Array(N_ORDER+1); for(let i=2;i<=N_ORDER;i++) LOGFACT
 
 const $ = s => document.querySelector(s);
 const tbody = $('#athTable tbody');
-const defaultAthletes = Array.from({length:9},(_,i)=>({enabled:i<6,name:`選手${i+1}`,speed:80,stamina:80,mental:80,corr12:0,corr56:0}));
+const defaultAthletes = Array.from({length:9},(_,i)=>({enabled:true,name:`選手${i+1}`,speed:80,stamina:80,mental:80,corr12:0,corr56:0}));
 let athletes = structuredClone(defaultAthletes);
 let lastResult = null;
 
@@ -112,8 +112,8 @@ function syncAthletes(){
 function num(root,sel){const v=parseFloat(root.querySelector(sel).value); return Number.isFinite(v)?v:0}
 function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 
-function currentConfig(){syncAthletes();return {version:1,athletes,rMode:$('#rMode').value,preset:$('#preset').value,optTrials:+$('#optTrials').value,finalTrials:+$('#finalTrials').value,mcSeed:+$('#mcSeed').value}}
-function applyConfig(c){if(c.athletes&&Array.isArray(c.athletes)) athletes=defaultAthletes.map((d,i)=>({...d,...(c.athletes[i]||{})}));renderAthletes();['rMode','preset','optTrials','finalTrials','mcSeed'].forEach(k=>{if(c[k]!==undefined&&$('#'+k)) $('#'+k).value=c[k]});}
+function currentConfig(){syncAthletes();return {version:2,athletes,rMode:$('#rMode').value,preset:$('#preset').value,optTrials:+$('#optTrials').value,finalTrials:+$('#finalTrials').value,mcSeed:+$('#mcSeed').value}}
+function applyConfig(c){if(c.athletes&&Array.isArray(c.athletes)){athletes=defaultAthletes.map((d,i)=>({...d,...(c.athletes[i]||{})}));if((c.version||1)<2){for(let i=6;i<athletes.length;i++)athletes[i].enabled=true;}}renderAthletes();['rMode','preset','optTrials','finalTrials','mcSeed'].forEach(k=>{if(c[k]!==undefined&&$('#'+k)) $('#'+k).value=c[k]});}
 function saveMaybe(){if($('#autoSave').checked){localStorage.setItem('izumo-sim-config',JSON.stringify(currentConfig()));}}
 function loadSaved(){try{const x=JSON.parse(localStorage.getItem('izumo-sim-config'));if(x)applyConfig(x);else renderAthletes()}catch{renderAthletes()}}
 
@@ -183,9 +183,9 @@ function renderChart(canvas,map,n,mean){const arr=[...map.entries()].sort((a,b)=
 
 function buildSectionBlocks(enabled,assign,finalRes,trials){const root=$('#sectionCharts');root.innerHTML='';for(let s=0;s<6;s++){const e=enabled[assign[s]],sec=SECTIONS[s],st=statsFromMap(finalRes.secMaps[s],trials),base=baseStatus(e.ath,sec);const div=document.createElement('div');div.className='section-block';div.innerHTML=`<div class="section-title"><strong>${sec.name} — ${escapeHtml(e.ath.name)}</strong><span>${fmtTime(st.mean,2)} (${st.mean.toFixed(2)}s)</span></div><div class="formula">基礎status ${base.toFixed(3)} / SD ${st.sd.toFixed(2)}秒 / 5–95% ${fmtIntTime(st.q05)}–${fmtIntTime(st.q95)}</div><div class="chartbox"><canvas></canvas><div class="tooltip"></div></div>`;root.appendChild(div);renderChart(div.querySelector('canvas'),finalRes.secMaps[s],trials,st.mean)}}
 
-async function run(){syncAthletes();const enabled=athletes.map((ath,idx)=>({ath,idx})).filter(x=>x.ath.enabled);if(enabled.length<6){$('#status').textContent='使用する選手を6人以上にしてください。';return}const optTrials=Math.max(200,Math.floor(+$('#optTrials').value||2500)),finalTrials=Math.max(1000,Math.floor(+$('#finalTrials').value||30000)),seed=(+$('#mcSeed').value>>>0),rMode=$('#rMode').value;const btn=$('#runBtn');btn.disabled=true;try{setProgress(0,'選手×区間の期待値を計算中…');const matrix=Array.from({length:enabled.length},()=>Array(6).fill(0));let done=0,total=enabled.length*6;for(let i=0;i<enabled.length;i++)for(let s=0;s<6;s++){matrix[i][s]=await estimateCell(enabled[i].ath,SECTIONS[s],optTrials,hash32(seed,'cell',enabled[i].idx,s),rMode);done++;setProgress(.60*done/total,`期待値行列を計算中… ${done}/${total}`);await breathe()}const opt=optimizeAssignment(matrix);setProgress(.61,'最適配置が決定。最終分布を計算します…');const finalRes=await simulateFinal(opt.assign,enabled,finalTrials,hash32(seed,'finalRes'),rMode);lastResult={enabled,matrix,opt,finalRes,finalTrials};renderResults();setProgress(1,`完了。最適化 ${optTrials.toLocaleString()}試行/セル、最終分布 ${finalTrials.toLocaleString()}試行。`);saveMaybe()}catch(e){console.error(e);$('#status').textContent='エラー: '+(e?.message||e)}finally{btn.disabled=false}}
+async function run(){syncAthletes();const enabled=athletes.map((ath,idx)=>({ath,idx})).filter(x=>x.ath.enabled);if(enabled.length<6){$('#status').textContent='探索対象の選手を6人以上にしてください。';return}const optTrials=Math.max(200,Math.floor(+$('#optTrials').value||2500)),finalTrials=Math.max(1000,Math.floor(+$('#finalTrials').value||30000)),seed=(+$('#mcSeed').value>>>0),rMode=$('#rMode').value;const btn=$('#runBtn');btn.disabled=true;try{setProgress(0,'選手×区間の期待値を計算中…');const matrix=Array.from({length:enabled.length},()=>Array(6).fill(0));let done=0,total=enabled.length*6;for(let i=0;i<enabled.length;i++)for(let s=0;s<6;s++){matrix[i][s]=await estimateCell(enabled[i].ath,SECTIONS[s],optTrials,hash32(seed,'cell',enabled[i].idx,s),rMode);done++;setProgress(.60*done/total,`期待値行列を計算中… ${done}/${total}`);await breathe()}const opt=optimizeAssignment(matrix);setProgress(.61,'最適配置が決定。最終分布を計算します…');const finalRes=await simulateFinal(opt.assign,enabled,finalTrials,hash32(seed,'finalRes'),rMode);lastResult={enabled,matrix,opt,finalRes,finalTrials};renderResults();setProgress(1,`完了。最適化 ${optTrials.toLocaleString()}試行/セル、最終分布 ${finalTrials.toLocaleString()}試行。`);saveMaybe()}catch(e){console.error(e);$('#status').textContent='エラー: '+(e?.message||e)}finally{btn.disabled=false}}
 
-function renderResults(){const {enabled,matrix,opt,finalRes,finalTrials}=lastResult;$('#results').classList.remove('hidden');$('#bestExpected').textContent=fmtTime(opt.best,2);$('#bestExpectedSec').textContent=`(${opt.best.toFixed(2)} 秒・最適化行列の和)`;const tb=$('#lineupBody');tb.innerHTML='';for(let s=0;s<6;s++){const e=enabled[opt.assign[s]],sec=SECTIONS[s],base=baseStatus(e.ath,sec),corr=corrFor(e.ath,sec);const tr=document.createElement('tr');tr.innerHTML=`<td>${sec.name}</td><td>${escapeHtml(e.ath.name)}</td><td>${base.toFixed(3)}</td><td>${corr>0?'+':''}${corr}</td><td>${fmtTime(matrix[opt.assign[s]][s],2)} (${matrix[opt.assign[s]][s].toFixed(2)}s)</td><td>${fmtTime(finalRes.secMean[s],2)} (${finalRes.secMean[s].toFixed(2)}s)</td>`;tb.appendChild(tr)}renderMatrix(enabled,matrix);const ts=statsFromMap(finalRes.totalMap,finalTrials);$('#totalMean').textContent=`${fmtTime(ts.mean,2)} (${ts.mean.toFixed(2)}s)`;$('#totalSd').textContent=`${ts.sd.toFixed(2)} 秒`;$('#totalRange').textContent=`${fmtIntTime(ts.q05)} – ${fmtIntTime(ts.q95)}`;renderChart($('#totalChart'),finalRes.totalMap,finalTrials,ts.mean);buildSectionBlocks(enabled,opt.assign,finalRes,finalTrials);$('#results').scrollIntoView({behavior:'smooth',block:'start'})}
+function renderResults(){const {enabled,matrix,opt,finalRes,finalTrials}=lastResult;$('#results').classList.remove('hidden');$('#bestExpected').textContent=fmtTime(opt.best,2);$('#bestExpectedSec').textContent=`(${opt.best.toFixed(2)} 秒・最適化行列の和)`;const tb=$('#lineupBody');tb.innerHTML='';for(let s=0;s<6;s++){const e=enabled[opt.assign[s]],sec=SECTIONS[s],base=baseStatus(e.ath,sec),corr=corrFor(e.ath,sec);const tr=document.createElement('tr');tr.innerHTML=`<td>${sec.name}</td><td>${escapeHtml(e.ath.name)}</td><td>${base.toFixed(3)}</td><td>${corr>0?'+':''}${corr}</td><td>${fmtTime(matrix[opt.assign[s]][s],2)} (${matrix[opt.assign[s]][s].toFixed(2)}s)</td><td>${fmtTime(finalRes.secMean[s],2)} (${finalRes.secMean[s].toFixed(2)}s)</td>`;tb.appendChild(tr)}const chosen=new Set(opt.assign);const bench=enabled.filter((_,i)=>!chosen.has(i)).map(e=>escapeHtml(e.ath.name));$('#benchResult').innerHTML=bench.length?`<b>控え（未選出）:</b> ${bench.join(' / ')}`:'探索対象は6人ちょうどです。';renderMatrix(enabled,matrix);const ts=statsFromMap(finalRes.totalMap,finalTrials);$('#totalMean').textContent=`${fmtTime(ts.mean,2)} (${ts.mean.toFixed(2)}s)`;$('#totalSd').textContent=`${ts.sd.toFixed(2)} 秒`;$('#totalRange').textContent=`${fmtIntTime(ts.q05)} – ${fmtIntTime(ts.q95)}`;renderChart($('#totalChart'),finalRes.totalMap,finalTrials,ts.mean);buildSectionBlocks(enabled,opt.assign,finalRes,finalTrials);$('#results').scrollIntoView({behavior:'smooth',block:'start'})}
 
 $('#preset').addEventListener('change',e=>{const v=e.target.value;if(v==='fast'){optTrials.value=800;finalTrials.value=8000}else if(v==='high'){optTrials.value=8000;finalTrials.value=100000}else{optTrials.value=2500;finalTrials.value=30000}saveMaybe()});
 $('#runBtn').addEventListener('click',run);['rMode','optTrials','finalTrials','mcSeed'].forEach(id=>$('#'+id).addEventListener('input',saveMaybe));
