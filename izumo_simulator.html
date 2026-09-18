@@ -28,8 +28,8 @@ details{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-t
 <div class="grid">
 <section class="panel">
 <h2>選手入力 <span class="pill">最大9人から6人を自動選抜</span></h2>
-<div class="table-wrap"><table id="athTable"><thead><tr><th>探索対象</th><th>名前</th><th>Speed</th><th>Stamina</th><th>Mental</th><th>1・2区補正</th><th>5・6区補正</th></tr></thead><tbody></tbody></table></div>
-<div class="tiny" style="margin-top:7px">チェックした選手は全員、控えも含めて最適配置の候補になります。最大9人から6人を自動選抜して区間配置まで探索します。補正は解析した MemberSkill の効果を直接指定します（+3 / 0 / -3）。3・4区にはこの補正は入りません。</div>
+<div class="table-wrap"><table id="athTable"><thead><tr><th>探索対象</th><th>名前</th><th>Speed</th><th>Stamina</th><th>Mental</th><th>前半特殊能力</th><th>後半特殊能力</th><th>特殊反映能力</th><th>区間status</th></tr></thead><tbody></tbody></table></div>
+<div class="tiny" style="margin-top:7px">チェックした選手は全員、控えも含めて最適配置の候補になります。特殊能力はゲーム内名称の「前半区間○/×」「後半区間○/×」を使用します。前半区間○/×は1・2区、後半区間○/×は5・6区で Speed / Stamina / Mental の3能力すべてに ±3。3・4区には入りません。「区間status」は特殊能力反映後・チーム共通乱数Rを加える前の値です。</div>
 
 <h3>計算設定</h3>
 <div class="controls">
@@ -56,6 +56,7 @@ details{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-t
 <div>4区: <b>.50 S + .25 T + .25 M + R</b></div>
 <div>5区: <b>.50 S + .25 T + .25 M + δ₅₆ + R</b></div>
 <div>6区: <b>.40 S + .30 T + .30 M + δ₅₆ + R</b></div>
+<div class="tiny" style="margin-top:5px">δ₁₂: 前半区間○ = +3 / 前半区間× = -3　　δ₅₆: 後半区間○ = +3 / 後半区間× = -3</div>
 </div>
 <div class="note warn" style="margin-top:10px">最適配置は期待タイムのMonte Carlo推定値を使います。僅差（特に0.2秒未満）の候補を厳密に比べたい場合は「高精度」にしてください。</div>
 </aside>
@@ -64,7 +65,7 @@ details{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-t
 <section id="results" class="panel hidden" style="margin-top:14px">
 <h2>最適配置</h2>
 <div class="result-head"><span>推定合計期待タイム</span><span id="bestExpected" class="big good"></span><span id="bestExpectedSec" class="tiny"></span></div>
-<div class="table-wrap"><table><thead><tr><th>区間</th><th>選手</th><th>基礎status</th><th>区間補正</th><th>最適化時 期待秒</th><th>最終MC 期待秒</th></tr></thead><tbody id="lineupBody"></tbody></table></div><div id="benchResult" class="tiny" style="margin-top:8px"></div>
+<div class="table-wrap"><table><thead><tr><th>区間</th><th>選手</th><th>適用特殊能力</th><th>特殊反映 S/T/M</th><th>内部status</th><th>最適化時 期待秒</th><th>最終MC 期待秒</th></tr></thead><tbody id="lineupBody"></tbody></table></div><div id="benchResult" class="tiny" style="margin-top:8px"></div>
 <details><summary>選手×区間 期待タイム行列</summary><div class="table-wrap" style="margin-top:8px"><table id="matrixTable"></table></div></details>
 
 <h3>合計タイム分布</h3>
@@ -96,23 +97,37 @@ const defaultAthletes = Array.from({length:9},(_,i)=>({enabled:true,name:`選手
 let athletes = structuredClone(defaultAthletes);
 let lastResult = null;
 
+function skillName(value,group){
+  if(group==='12') return value>0?'前半区間○':value<0?'前半区間×':'なし';
+  return value>0?'後半区間○':value<0?'後半区間×':'なし';
+}
+function readAthleteFromRow(tr){
+  return {enabled:tr.querySelector('.use').checked,name:tr.querySelector('.name').value||'選手',speed:num(tr,'.speed'),stamina:num(tr,'.stamina'),mental:num(tr,'.mental'),corr12:+tr.querySelector('.corr12').value,corr56:+tr.querySelector('.corr56').value};
+}
+function effectiveSTM(a,sec){const d=corrFor(a,sec);return [a.speed+d,a.stamina+d,a.mental+d]}
+function updateRowStatus(tr){
+  const a=readAthleteFromRow(tr), f=effectiveSTM(a,SECTIONS[0]), h=effectiveSTM(a,SECTIONS[4]);
+  tr.querySelector('.effective').innerHTML=`<span class="tiny">前半</span> ${f.map(x=>x.toFixed(1)).join(' / ')}<br><span class="tiny">後半</span> ${h.map(x=>x.toFixed(1)).join(' / ')}`;
+  tr.querySelector('.secstatus').innerHTML=SECTIONS.map((sec,i)=>`<span class="tiny">${i+1}</span> ${baseStatus(a,sec).toFixed(2)}`).join('　');
+}
 function athleteRow(a,i){
   const tr=document.createElement('tr'); tr.dataset.i=i;
-  tr.innerHTML=`<td><input class="use" type="checkbox" ${a.enabled?'checked':''}></td><td><input class="name" type="text" value="${escapeHtml(a.name)}"></td><td><input class="speed" type="number" step="0.1" value="${a.speed}"></td><td><input class="stamina" type="number" step="0.1" value="${a.stamina}"></td><td><input class="mental" type="number" step="0.1" value="${a.mental}"></td><td><select class="corr12"><option value="0">0</option><option value="3">+3</option><option value="-3">-3</option></select></td><td><select class="corr56"><option value="0">0</option><option value="3">+3</option><option value="-3">-3</option></select></td>`;
+  tr.innerHTML=`<td><input class="use" type="checkbox" ${a.enabled?'checked':''}></td><td><input class="name" type="text" value="${escapeHtml(a.name)}"></td><td><input class="speed" type="number" step="0.1" value="${a.speed}"></td><td><input class="stamina" type="number" step="0.1" value="${a.stamina}"></td><td><input class="mental" type="number" step="0.1" value="${a.mental}"></td><td><select class="corr12"><option value="0">なし</option><option value="3">前半区間○ (+3)</option><option value="-3">前半区間× (-3)</option></select></td><td><select class="corr56"><option value="0">なし</option><option value="3">後半区間○ (+3)</option><option value="-3">後半区間× (-3)</option></select></td><td class="effective"></td><td class="secstatus"></td>`;
   tr.querySelector('.corr12').value=String(a.corr12); tr.querySelector('.corr56').value=String(a.corr56);
   setTimeout(()=>tr.classList.toggle('disabled-row',!a.enabled));
-  tr.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',()=>{syncAthletes(); saveMaybe();}));
+  tr.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',()=>{updateRowStatus(tr);syncAthletes();saveMaybe();}));
   tr.querySelector('.use').addEventListener('change',()=>tr.classList.toggle('disabled-row',!tr.querySelector('.use').checked));
+  updateRowStatus(tr);
   return tr;
 }
 function renderAthletes(){tbody.innerHTML=''; athletes.forEach((a,i)=>tbody.appendChild(athleteRow(a,i)));}
 function syncAthletes(){
-  athletes=[...tbody.querySelectorAll('tr')].map(tr=>({enabled:tr.querySelector('.use').checked,name:tr.querySelector('.name').value||'選手',speed:num(tr,'.speed'),stamina:num(tr,'.stamina'),mental:num(tr,'.mental'),corr12:+tr.querySelector('.corr12').value,corr56:+tr.querySelector('.corr56').value}));
+  athletes=[...tbody.querySelectorAll('tr')].map(readAthleteFromRow);
 }
 function num(root,sel){const v=parseFloat(root.querySelector(sel).value); return Number.isFinite(v)?v:0}
 function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 
-function currentConfig(){syncAthletes();return {version:2,athletes,rMode:$('#rMode').value,preset:$('#preset').value,optTrials:+$('#optTrials').value,finalTrials:+$('#finalTrials').value,mcSeed:+$('#mcSeed').value}}
+function currentConfig(){syncAthletes();return {version:3,athletes,rMode:$('#rMode').value,preset:$('#preset').value,optTrials:+$('#optTrials').value,finalTrials:+$('#finalTrials').value,mcSeed:+$('#mcSeed').value}}
 function applyConfig(c){if(c.athletes&&Array.isArray(c.athletes)){athletes=defaultAthletes.map((d,i)=>({...d,...(c.athletes[i]||{})}));if((c.version||1)<2){for(let i=6;i<athletes.length;i++)athletes[i].enabled=true;}}renderAthletes();['rMode','preset','optTrials','finalTrials','mcSeed'].forEach(k=>{if(c[k]!==undefined&&$('#'+k)) $('#'+k).value=c[k]});}
 function saveMaybe(){if($('#autoSave').checked){localStorage.setItem('izumo-sim-config',JSON.stringify(currentConfig()));}}
 function loadSaved(){try{const x=JSON.parse(localStorage.getItem('izumo-sim-config'));if(x)applyConfig(x);else renderAthletes()}catch{renderAthletes()}}
@@ -181,11 +196,11 @@ function renderMatrix(enabled,matrix){const t=$('#matrixTable');t.innerHTML='<th
 
 function renderChart(canvas,map,n,mean){const arr=[...map.entries()].sort((a,b)=>a[0]-b[0]);if(!arr.length)return;const dpr=devicePixelRatio||1,w=Math.max(360,canvas.clientWidth),h=210;canvas.width=w*dpr;canvas.height=h*dpr;const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);const pad={l:52,r:14,t:14,b:34},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;const min=arr[0][0],max=arr.at(-1)[0],span=Math.max(1,max-min);let ymax=0;const probs=new Map();for(const [x,c] of arr){const p=c/n;probs.set(x,p);if(p>ymax)ymax=p}ymax*=1.12;ctx.strokeStyle='#27313b';ctx.lineWidth=1;ctx.fillStyle='#8695a5';ctx.font='10px ui-monospace,monospace';ctx.textAlign='right';ctx.textBaseline='middle';for(let j=0;j<=4;j++){const y=pad.t+ih*j/4;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();const pv=ymax*(1-j/4)*100;ctx.fillText(pv.toFixed(pv<1?2:1)+'%',pad.l-6,y)}ctx.textAlign='center';ctx.textBaseline='top';for(let j=0;j<=4;j++){const x=pad.l+iw*j/4,sv=Math.round(min+span*j/4);ctx.fillText(fmtIntTime(sv),x,h-pad.b+8)}ctx.strokeStyle='#67b7ff';ctx.lineWidth=1.6;ctx.beginPath();let first=true;for(let sec=min;sec<=max;sec++){const px=pad.l+(sec-min)/span*iw,py=pad.t+ih-(probs.get(sec)||0)/ymax*ih;if(first){ctx.moveTo(px,py);first=false}else ctx.lineTo(px,py)}ctx.stroke();ctx.strokeStyle='#71d39a';ctx.setLineDash([4,4]);const mx=pad.l+(mean-min)/span*iw;ctx.beginPath();ctx.moveTo(mx,pad.t);ctx.lineTo(mx,pad.t+ih);ctx.stroke();ctx.setLineDash([]);canvas._chart={min,max,span,pad,iw,probs,n};const box=canvas.parentElement,tip=box.querySelector('.tooltip');canvas.onmousemove=e=>{const r=canvas.getBoundingClientRect(),xx=e.clientX-r.left;let sec=Math.round(min+((xx-pad.l)/iw)*span);sec=Math.max(min,Math.min(max,sec));tip.style.display='block';tip.textContent=`${fmtIntTime(sec)} / ${((probs.get(sec)||0)*100).toFixed(3)}%`;tip.style.left=Math.min(box.clientWidth-150,Math.max(4,xx+10))+'px';tip.style.top='8px'};canvas.onmouseleave=()=>tip.style.display='none'}
 
-function buildSectionBlocks(enabled,assign,finalRes,trials){const root=$('#sectionCharts');root.innerHTML='';for(let s=0;s<6;s++){const e=enabled[assign[s]],sec=SECTIONS[s],st=statsFromMap(finalRes.secMaps[s],trials),base=baseStatus(e.ath,sec);const div=document.createElement('div');div.className='section-block';div.innerHTML=`<div class="section-title"><strong>${sec.name} — ${escapeHtml(e.ath.name)}</strong><span>${fmtTime(st.mean,2)} (${st.mean.toFixed(2)}s)</span></div><div class="formula">基礎status ${base.toFixed(3)} / SD ${st.sd.toFixed(2)}秒 / 5–95% ${fmtIntTime(st.q05)}–${fmtIntTime(st.q95)}</div><div class="chartbox"><canvas></canvas><div class="tooltip"></div></div>`;root.appendChild(div);renderChart(div.querySelector('canvas'),finalRes.secMaps[s],trials,st.mean)}}
+function buildSectionBlocks(enabled,assign,finalRes,trials){const root=$('#sectionCharts');root.innerHTML='';for(let s=0;s<6;s++){const e=enabled[assign[s]],sec=SECTIONS[s],st=statsFromMap(finalRes.secMaps[s],trials),base=baseStatus(e.ath,sec);const div=document.createElement('div');div.className='section-block';div.innerHTML=`<div class="section-title"><strong>${sec.name} — ${escapeHtml(e.ath.name)}</strong><span>${fmtTime(st.mean,2)} (${st.mean.toFixed(2)}s)</span></div><div class="formula">特殊反映status ${base.toFixed(3)} / ${sec.corr?skillName(corrFor(e.ath,sec),sec.corr):'特殊能力対象外'} / SD ${st.sd.toFixed(2)}秒 / 5–95% ${fmtIntTime(st.q05)}–${fmtIntTime(st.q95)}</div><div class="chartbox"><canvas></canvas><div class="tooltip"></div></div>`;root.appendChild(div);renderChart(div.querySelector('canvas'),finalRes.secMaps[s],trials,st.mean)}}
 
 async function run(){syncAthletes();const enabled=athletes.map((ath,idx)=>({ath,idx})).filter(x=>x.ath.enabled);if(enabled.length<6){$('#status').textContent='探索対象の選手を6人以上にしてください。';return}const optTrials=Math.max(200,Math.floor(+$('#optTrials').value||2500)),finalTrials=Math.max(1000,Math.floor(+$('#finalTrials').value||30000)),seed=(+$('#mcSeed').value>>>0),rMode=$('#rMode').value;const btn=$('#runBtn');btn.disabled=true;try{setProgress(0,'選手×区間の期待値を計算中…');const matrix=Array.from({length:enabled.length},()=>Array(6).fill(0));let done=0,total=enabled.length*6;for(let i=0;i<enabled.length;i++)for(let s=0;s<6;s++){matrix[i][s]=await estimateCell(enabled[i].ath,SECTIONS[s],optTrials,hash32(seed,'cell',enabled[i].idx,s),rMode);done++;setProgress(.60*done/total,`期待値行列を計算中… ${done}/${total}`);await breathe()}const opt=optimizeAssignment(matrix);setProgress(.61,'最適配置が決定。最終分布を計算します…');const finalRes=await simulateFinal(opt.assign,enabled,finalTrials,hash32(seed,'finalRes'),rMode);lastResult={enabled,matrix,opt,finalRes,finalTrials};renderResults();setProgress(1,`完了。最適化 ${optTrials.toLocaleString()}試行/セル、最終分布 ${finalTrials.toLocaleString()}試行。`);saveMaybe()}catch(e){console.error(e);$('#status').textContent='エラー: '+(e?.message||e)}finally{btn.disabled=false}}
 
-function renderResults(){const {enabled,matrix,opt,finalRes,finalTrials}=lastResult;$('#results').classList.remove('hidden');$('#bestExpected').textContent=fmtTime(opt.best,2);$('#bestExpectedSec').textContent=`(${opt.best.toFixed(2)} 秒・最適化行列の和)`;const tb=$('#lineupBody');tb.innerHTML='';for(let s=0;s<6;s++){const e=enabled[opt.assign[s]],sec=SECTIONS[s],base=baseStatus(e.ath,sec),corr=corrFor(e.ath,sec);const tr=document.createElement('tr');tr.innerHTML=`<td>${sec.name}</td><td>${escapeHtml(e.ath.name)}</td><td>${base.toFixed(3)}</td><td>${corr>0?'+':''}${corr}</td><td>${fmtTime(matrix[opt.assign[s]][s],2)} (${matrix[opt.assign[s]][s].toFixed(2)}s)</td><td>${fmtTime(finalRes.secMean[s],2)} (${finalRes.secMean[s].toFixed(2)}s)</td>`;tb.appendChild(tr)}const chosen=new Set(opt.assign);const bench=enabled.filter((_,i)=>!chosen.has(i)).map(e=>escapeHtml(e.ath.name));$('#benchResult').innerHTML=bench.length?`<b>控え（未選出）:</b> ${bench.join(' / ')}`:'探索対象は6人ちょうどです。';renderMatrix(enabled,matrix);const ts=statsFromMap(finalRes.totalMap,finalTrials);$('#totalMean').textContent=`${fmtTime(ts.mean,2)} (${ts.mean.toFixed(2)}s)`;$('#totalSd').textContent=`${ts.sd.toFixed(2)} 秒`;$('#totalRange').textContent=`${fmtIntTime(ts.q05)} – ${fmtIntTime(ts.q95)}`;renderChart($('#totalChart'),finalRes.totalMap,finalTrials,ts.mean);buildSectionBlocks(enabled,opt.assign,finalRes,finalTrials);$('#results').scrollIntoView({behavior:'smooth',block:'start'})}
+function renderResults(){const {enabled,matrix,opt,finalRes,finalTrials}=lastResult;$('#results').classList.remove('hidden');$('#bestExpected').textContent=fmtTime(opt.best,2);$('#bestExpectedSec').textContent=`(${opt.best.toFixed(2)} 秒・最適化行列の和)`;const tb=$('#lineupBody');tb.innerHTML='';for(let s=0;s<6;s++){const e=enabled[opt.assign[s]],sec=SECTIONS[s],base=baseStatus(e.ath,sec),corr=corrFor(e.ath,sec),eff=effectiveSTM(e.ath,sec),sk=sec.corr?skillName(corr,sec.corr):'対象外';const tr=document.createElement('tr');tr.innerHTML=`<td>${sec.name}</td><td>${escapeHtml(e.ath.name)}</td><td>${sk}</td><td>${eff.map(x=>x.toFixed(1)).join(' / ')}</td><td>${base.toFixed(3)}</td><td>${fmtTime(matrix[opt.assign[s]][s],2)} (${matrix[opt.assign[s]][s].toFixed(2)}s)</td><td>${fmtTime(finalRes.secMean[s],2)} (${finalRes.secMean[s].toFixed(2)}s)</td>`;tb.appendChild(tr)}const chosen=new Set(opt.assign);const bench=enabled.filter((_,i)=>!chosen.has(i)).map(e=>escapeHtml(e.ath.name));$('#benchResult').innerHTML=bench.length?`<b>控え（未選出）:</b> ${bench.join(' / ')}`:'探索対象は6人ちょうどです。';renderMatrix(enabled,matrix);const ts=statsFromMap(finalRes.totalMap,finalTrials);$('#totalMean').textContent=`${fmtTime(ts.mean,2)} (${ts.mean.toFixed(2)}s)`;$('#totalSd').textContent=`${ts.sd.toFixed(2)} 秒`;$('#totalRange').textContent=`${fmtIntTime(ts.q05)} – ${fmtIntTime(ts.q95)}`;renderChart($('#totalChart'),finalRes.totalMap,finalTrials,ts.mean);buildSectionBlocks(enabled,opt.assign,finalRes,finalTrials);$('#results').scrollIntoView({behavior:'smooth',block:'start'})}
 
 $('#preset').addEventListener('change',e=>{const v=e.target.value;if(v==='fast'){optTrials.value=800;finalTrials.value=8000}else if(v==='high'){optTrials.value=8000;finalTrials.value=100000}else{optTrials.value=2500;finalTrials.value=30000}saveMaybe()});
 $('#runBtn').addEventListener('click',run);['rMode','optTrials','finalTrials','mcSeed'].forEach(id=>$('#'+id).addEventListener('input',saveMaybe));
