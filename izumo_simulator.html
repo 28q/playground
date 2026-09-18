@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>出雲駅伝タイム解析ツール</title>
+<style>
+:root{--bg:#0b0d10;--panel:#12161b;--panel2:#171c22;--text:#e9eef5;--muted:#9aa7b5;--line:#2b3440;--accent:#67b7ff;--ok:#71d39a;--warn:#ffd166;--bad:#ff7b7b;--shadow:0 12px 34px rgba(0,0,0,.26)}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",Menlo,monospace;line-height:1.45}
+header{position:sticky;top:0;z-index:20;background:rgba(11,13,16,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.wrap{max-width:1500px;margin:auto;padding:18px 20px} h1{font-size:22px;margin:0 0 4px}.sub{color:var(--muted);font-size:12px}
+.grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(340px,.8fr);gap:14px;align-items:start}.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:var(--shadow)}
+.panel h2{font-size:15px;margin:0 0 12px}.panel h3{font-size:13px;margin:14px 0 8px;color:#d9e3ee}.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:end}.field{display:flex;flex-direction:column;gap:4px}.field label{font-size:11px;color:var(--muted)}
+input,select,button{font:inherit} input[type=text],input[type=number],select{background:#0f1318;border:1px solid var(--line);color:var(--text);border-radius:7px;padding:7px 8px;min-height:34px} input[type=number]{width:92px} input.name{width:130px}
+button{border:1px solid #3a4857;background:#1b2733;color:#f3f8ff;padding:8px 12px;border-radius:8px;cursor:pointer}button:hover{background:#223444}button.primary{background:#174c73;border-color:#2d79a8}button.primary:hover{background:#1c5b89}button:disabled{opacity:.5;cursor:wait}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:9px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{padding:7px 8px;border-bottom:1px solid #252d36;text-align:right;white-space:nowrap}th{position:sticky;top:0;background:#151a20;color:#aeb9c6;font-weight:600}th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}.disabled-row{opacity:.45}.tiny{font-size:11px;color:var(--muted)}.note{font-size:11px;color:#a9b6c3;background:#0e1217;border-left:3px solid #3d7198;padding:8px 10px;border-radius:4px}.warn{border-left-color:#a07a26;color:#d8c79f}
+.status{margin-top:10px;padding:9px 10px;background:#0f141a;border:1px solid var(--line);border-radius:8px;font-size:12px;min-height:38px}.progress{height:7px;background:#0a0d10;border-radius:99px;overflow:hidden;margin-top:7px}.bar{height:100%;width:0%;background:linear-gradient(90deg,#3d8dc3,#68c1ff);transition:width .12s linear}
+.result-head{display:flex;flex-wrap:wrap;gap:14px;align-items:baseline;margin:8px 0 12px}.big{font-size:24px;font-weight:700}.good{color:var(--ok)}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.card{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px}.card .k{font-size:10px;color:var(--muted)}.card .v{font-size:17px;margin-top:3px}
+.chartbox{position:relative;background:#0d1116;border:1px solid var(--line);border-radius:9px;padding:8px;margin:8px 0 12px}.chartbox canvas{width:100%;height:210px;display:block}.tooltip{position:absolute;pointer-events:none;background:#030507;border:1px solid #4b5968;border-radius:6px;padding:5px 7px;font-size:11px;display:none;z-index:5;white-space:nowrap}
+.section-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.section-block{background:#11161c;border:1px solid var(--line);border-radius:10px;padding:10px}.section-title{display:flex;justify-content:space-between;gap:8px;align-items:baseline;font-size:12px}.section-title strong{font-size:14px}.formula{font-size:10px;color:#91a3b5;margin-top:3px}
+details{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:10px}summary{cursor:pointer;color:#c9d4df;font-size:12px}.hidden{display:none!important}.pill{display:inline-block;border:1px solid #40505f;border-radius:999px;padding:2px 7px;font-size:10px;color:#bdc9d5}.right{margin-left:auto}.checkbox{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}.cards{grid-template-columns:1fr 1fr}.section-grid{grid-template-columns:1fr}}@media(max-width:620px){.wrap{padding:12px}.cards{grid-template-columns:1fr}th,td{padding:6px 5px}.panel{padding:10px}}
+</style>
+</head>
+<body>
+<header><div class="wrap"><h1>出雲駅伝タイム解析ツール</h1><div class="sub">解析済みゲームロジックに基づく期待値・整数秒PMF・最大9人からの6区最適配置</div></div></header>
+<main class="wrap">
+<div class="grid">
+<section class="panel">
+<h2>選手入力 <span class="pill">最大9人 / 出走6人</span></h2>
+<div class="table-wrap"><table id="athTable"><thead><tr><th>使用</th><th>名前</th><th>Speed</th><th>Stamina</th><th>Mental</th><th>1・2区補正</th><th>5・6区補正</th></tr></thead><tbody></tbody></table></div>
+<div class="tiny" style="margin-top:7px">補正は解析した MemberSkill の効果を直接指定します（+3 / 0 / -3）。3・4区にはこの補正は入りません。</div>
+
+<h3>計算設定</h3>
+<div class="controls">
+<div class="field"><label>チーム共通乱数 R</label><select id="rMode"><option value="other">通常: Uniform[-4, 0]</option><option value="team9">team index 9: Uniform[-2, 2]</option><option value="team7">team index 7: Uniform[-2, 6]</option><option value="zero">R=0 固定（比較用）</option></select></div>
+<div class="field"><label>精度プリセット</label><select id="preset"><option value="fast">高速</option><option value="standard" selected>標準</option><option value="high">高精度</option></select></div>
+<div class="field"><label>最適化 / 各セル試行</label><input id="optTrials" type="number" min="200" max="50000" step="100" value="2500"></div>
+<div class="field"><label>最終分布試行</label><input id="finalTrials" type="number" min="1000" max="300000" step="1000" value="30000"></div>
+<div class="field"><label>解析用MC seed</label><input id="mcSeed" type="number" min="0" max="4294967295" step="1" value="123456789"></div>
+<label class="checkbox"><input type="checkbox" id="autoSave" checked> 入力をlocalStorage保存</label>
+</div>
+<div class="controls" style="margin-top:12px"><button class="primary" id="runBtn">最適配置を探索して分布計算</button><button id="resetBtn">初期値へ戻す</button><button id="exportBtn">設定JSONを保存</button><label><button type="button" id="importBtn">設定JSONを読込</button><input id="importFile" type="file" accept="application/json,.json" class="hidden"></label></div>
+<div id="status" class="status">入力後、「最適配置を探索して分布計算」を押してください。</div><div class="progress"><div class="bar" id="progressBar"></div></div>
+
+<details><summary>計算モデルについて</summary><div class="note" style="margin-top:8px">SectionResult の1000個ソートをそのまま毎回生成すると非常に重いため、順位統計量の分布に置換して高速化しています。status側の順位は Binomial(1000,p)、time側の順位統計量は Beta order statistic からサンプルします。元コードの Random.Range(0.0001,1) によるごく端の切断は標準正規として近似しているため、極端な4σ付近以外では差は非常に小さい想定です。表示確率は外側Monte Carloの推定値です。解析用MC seedは結果再現用で、Unity本体のseedとは無関係です。</div></details>
+</section>
+
+<aside class="panel">
+<h2>解析式</h2>
+<div class="note">各区の内部statusに同一チーム乱数 R を加え、その値を SectionResultWithMin に渡します。合計分布の計算でも6区に同じ R を共有させています。</div>
+<div style="margin-top:9px;font-size:11px;line-height:1.8">
+<div>1区: <b>.60 S + .20 T + .20 M + δ₁₂ + R</b></div>
+<div>2区: <b>.70 S + .15 T + .15 M + δ₁₂ + R</b></div>
+<div>3区: <b>.45 S + .25 T + .30 M + R</b></div>
+<div>4区: <b>.50 S + .25 T + .25 M + R</b></div>
+<div>5区: <b>.50 S + .25 T + .25 M + δ₅₆ + R</b></div>
+<div>6区: <b>.40 S + .30 T + .30 M + δ₅₆ + R</b></div>
+</div>
+<div class="note warn" style="margin-top:10px">最適配置は期待タイムのMonte Carlo推定値を使います。僅差（特に0.2秒未満）の候補を厳密に比べたい場合は「高精度」にしてください。</div>
+</aside>
+</div>
+
+<section id="results" class="panel hidden" style="margin-top:14px">
+<h2>最適配置</h2>
+<div class="result-head"><span>推定合計期待タイム</span><span id="bestExpected" class="big good"></span><span id="bestExpectedSec" class="tiny"></span></div>
+<div class="table-wrap"><table><thead><tr><th>区間</th><th>選手</th><th>基礎status</th><th>区間補正</th><th>最適化時 期待秒</th><th>最終MC 期待秒</th></tr></thead><tbody id="lineupBody"></tbody></table></div>
+<details><summary>選手×区間 期待タイム行列</summary><div class="table-wrap" style="margin-top:8px"><table id="matrixTable"></table></div></details>
+
+<h3>合計タイム分布</h3>
+<div class="cards"><div class="card"><div class="k">期待値</div><div id="totalMean" class="v"></div></div><div class="card"><div class="k">標準偏差</div><div id="totalSd" class="v"></div></div><div class="card"><div class="k">5%–95%</div><div id="totalRange" class="v"></div></div></div>
+<div class="chartbox"><canvas id="totalChart"></canvas><div class="tooltip"></div></div>
+
+<h3>各区間タイム分布</h3>
+<div id="sectionCharts" class="section-grid"></div>
+</section>
+</main>
+<script>
+'use strict';
+
+const N_ORDER = 1000;
+const RATE = 0.4;
+const SECTIONS = [
+  {name:'1区', w:[.60,.20,.20], corr:'12', a:1423,b:25,c:80,d:10, cap:1350, ao:1440,bo:25,co:80,do_:10},
+  {name:'2区', w:[.70,.15,.15], corr:'12', a:974,b:20,c:77,d:10, cap:940, ao:1000,bo:20,co:76,do_:10},
+  {name:'3区', w:[.45,.25,.30], corr:null, a:1460,b:30,c:81,d:10, cap:1410, ao:1460,bo:30,co:81,do_:10},
+  {name:'4区', w:[.50,.25,.25], corr:null, a:1070,b:25,c:74,d:10, cap:1050, ao:1070,bo:25,co:74,do_:10},
+  {name:'5区', w:[.50,.25,.25], corr:'56', a:1110,b:30,c:74,d:10, cap:1070, ao:1110,bo:30,co:74,do_:10},
+  {name:'6区', w:[.40,.30,.30], corr:'56', a:1800,b:50,c:81,d:10, cap:1720, ao:1800,bo:50,co:81,do_:10}
+];
+const LOGFACT = new Float64Array(N_ORDER+1); for(let i=2;i<=N_ORDER;i++) LOGFACT[i]=LOGFACT[i-1]+Math.log(i);
+
+const $ = s => document.querySelector(s);
+const tbody = $('#athTable tbody');
+const defaultAthletes = Array.from({length:9},(_,i)=>({enabled:i<6,name:`選手${i+1}`,speed:80,stamina:80,mental:80,corr12:0,corr56:0}));
+let athletes = structuredClone(defaultAthletes);
+let lastResult = null;
+
+function athleteRow(a,i){
+  const tr=document.createElement('tr'); tr.dataset.i=i;
+  tr.innerHTML=`<td><input class="use" type="checkbox" ${a.enabled?'checked':''}></td><td><input class="name" type="text" value="${escapeHtml(a.name)}"></td><td><input class="speed" type="number" step="0.1" value="${a.speed}"></td><td><input class="stamina" type="number" step="0.1" value="${a.stamina}"></td><td><input class="mental" type="number" step="0.1" value="${a.mental}"></td><td><select class="corr12"><option value="0">0</option><option value="3">+3</option><option value="-3">-3</option></select></td><td><select class="corr56"><option value="0">0</option><option value="3">+3</option><option value="-3">-3</option></select></td>`;
+  tr.querySelector('.corr12').value=String(a.corr12); tr.querySelector('.corr56').value=String(a.corr56);
+  setTimeout(()=>tr.classList.toggle('disabled-row',!a.enabled));
+  tr.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',()=>{syncAthletes(); saveMaybe();}));
+  tr.querySelector('.use').addEventListener('change',()=>tr.classList.toggle('disabled-row',!tr.querySelector('.use').checked));
+  return tr;
+}
+function renderAthletes(){tbody.innerHTML=''; athletes.forEach((a,i)=>tbody.appendChild(athleteRow(a,i)));}
+function syncAthletes(){
+  athletes=[...tbody.querySelectorAll('tr')].map(tr=>({enabled:tr.querySelector('.use').checked,name:tr.querySelector('.name').value||'選手',speed:num(tr,'.speed'),stamina:num(tr,'.stamina'),mental:num(tr,'.mental'),corr12:+tr.querySelector('.corr12').value,corr56:+tr.querySelector('.corr56').value}));
+}
+function num(root,sel){const v=parseFloat(root.querySelector(sel).value); return Number.isFinite(v)?v:0}
+function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+function currentConfig(){syncAthletes();return {version:1,athletes,rMode:$('#rMode').value,preset:$('#preset').value,optTrials:+$('#optTrials').value,finalTrials:+$('#finalTrials').value,mcSeed:+$('#mcSeed').value}}
+function applyConfig(c){if(c.athletes&&Array.isArray(c.athletes)) athletes=defaultAthletes.map((d,i)=>({...d,...(c.athletes[i]||{})}));renderAthletes();['rMode','preset','optTrials','finalTrials','mcSeed'].forEach(k=>{if(c[k]!==undefined&&$('#'+k)) $('#'+k).value=c[k]});}
+function saveMaybe(){if($('#autoSave').checked){localStorage.setItem('izumo-sim-config',JSON.stringify(currentConfig()));}}
+function loadSaved(){try{const x=JSON.parse(localStorage.getItem('izumo-sim-config'));if(x)applyConfig(x);else renderAthletes()}catch{renderAthletes()}}
+
+function hash32(...xs){let h=2166136261>>>0; for(const x0 of xs){const s=String(x0);for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}}return h>>>0}
+function makeRng(seed){let a=(seed>>>0)||0x6d2b79f5, spare=null;function uniform(){a=(a+0x6D2B79F5)>>>0;let t=a;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296}return {uniform,normal(){if(spare!==null){const z=spare;spare=null;return z}let u=0,v=0;do{u=uniform()}while(u<=1e-15);v=uniform();const r=Math.sqrt(-2*Math.log(u)),th=2*Math.PI*v;spare=r*Math.sin(th);return r*Math.cos(th)}}}
+
+function normalCDF(x){const sign=x<0?-1:1; x=Math.abs(x)/Math.SQRT2; const t=1/(1+0.3275911*x); const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x); return 0.5*(1+sign*y)}
+function invNorm(p){p=Math.min(1-1e-15,Math.max(1e-15,p));const a=[-39.69683028665376,220.9460984245205,-275.9285104469687,138.357751867269,-30.66479806614716,2.506628277459239],b=[-54.47609879822406,161.5858368580409,-155.6989798598866,66.80131188771972,-13.28068155288572],c=[-0.007784894002430293,-0.3223964580411365,-2.400758277161838,-2.549732539343734,4.374664141464968,2.938163982698783],d=[0.007784695709041462,0.3224671290700398,2.445134137142996,3.754408661907416];const pl=.02425,ph=1-pl;let q,r;if(p<pl){q=Math.sqrt(-2*Math.log(p));return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)}if(p>ph){q=Math.sqrt(-2*Math.log(1-p));return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)}q=p-.5;r=q*q;return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q/(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1)}
+
+function sampleBinomial(n,p,rng){if(p<=0)return 0;if(p>=1)return n;let flip=false;if(p>.5){p=1-p;flip=true}const odds=p/(1-p);let m=Math.floor((n+1)*p);if(m<0)m=0;if(m>n)m=n;const lp=LOGFACT[n]-LOGFACT[m]-LOGFACT[n-m]+m*Math.log(p)+(n-m)*Math.log1p(-p);let pr=Math.exp(lp);let u=rng.uniform();if(u<=pr)return flip?n-m:m;u-=pr;let pd=pr,pu=pr,rd=m,ru=m;for(let guard=0;guard<n+5;guard++){
+  if(rd>0){pd*=rd/(odds*(n-rd+1));rd--;u-=pd;if(u<=0)return flip?n-rd:rd}
+  if(ru<n){pu*=(n-ru)*odds/(ru+1);ru++;u-=pu;if(u<=0)return flip?n-ru:ru}
+  if(rd===0&&ru===n)break
+}return flip?n-m:m}
+function gammaSample(shape,rng){const d=shape-1/3,c=1/Math.sqrt(9*d);for(;;){const z=rng.normal();let v=1+c*z;if(v<=0)continue;v=v*v*v;const u=rng.uniform();if(u<1-0.0331*z*z*z*z)return d*v;if(Math.log(u)<0.5*z*z+d*(1-v+Math.log(v)))return d*v}}
+function betaSample(a,b,rng){const x=gammaSample(a,rng),y=gammaSample(b,rng);return x/(x+y)}
+
+function sectionResultSample(x,a,b,c,d,rng){const pGreater=normalCDF((c-x)/d);const k=sampleBinomial(N_ORDER,pGreater,rng);const rank=Math.min(k,N_ORDER-1)+1;const u=betaSample(rank,N_ORDER+1-rank,rng);const t=a+b*invNorm(u);return Math.floor(t+0.5)}
+function srMinSample(x,s,rng){let t=sectionResultSample(x,s.a,s.b,s.c,s.d,rng);if(t<s.cap)t=s.cap+Math.trunc((t-s.cap)*RATE);const old=sectionResultSample(x,s.ao,s.bo,s.co,s.do_,rng);return Math.min(t,old)}
+function corrFor(a,s){return s.corr==='12'?a.corr12:s.corr==='56'?a.corr56:0}
+function baseStatus(a,s){return a.speed*s.w[0]+a.stamina*s.w[1]+a.mental*s.w[2]+corrFor(a,s)}
+function rRange(mode){if(mode==='team7')return[-2,6];if(mode==='team9')return[-2,2];if(mode==='zero')return[0,0];return[-4,0]}
+function sampleR(mode,rng){const [lo,hi]=rRange(mode);return lo===hi?lo:lo+(hi-lo)*rng.uniform()}
+
+const breathe=()=>new Promise(r=>setTimeout(r,0));
+function setProgress(frac,text){$('#progressBar').style.width=(100*Math.max(0,Math.min(1,frac)))+'%';if(text)$('#status').textContent=text}
+async function estimateCell(a,s,trials,seed,rMode){const rng=makeRng(seed);let sum=0;const chunk=400;for(let i=0;i<trials;i++){const x=baseStatus(a,s)+sampleR(rMode,rng);sum+=srMinSample(x,s,rng);if((i+1)%chunk===0)await breathe()}return sum/trials}
+
+function popcount(x){let c=0;while(x){x&=x-1;c++}return c}
+function optimizeAssignment(matrix){const m=matrix.length,size=1<<m;const dp=new Float64Array(size);dp.fill(Infinity);dp[0]=0;const parM=new Int32Array(size);parM.fill(-1);const parA=new Int16Array(size);parA.fill(-1);for(let mask=0;mask<size;mask++){const s=popcount(mask);if(s>=6||!Number.isFinite(dp[mask]))continue;for(let j=0;j<m;j++)if(!(mask>>j&1)){const nm=mask|1<<j,v=dp[mask]+matrix[j][s];if(v<dp[nm]){dp[nm]=v;parM[nm]=mask;parA[nm]=j}}}let best=Infinity,bm=-1;for(let mask=0;mask<size;mask++)if(popcount(mask)===6&&dp[mask]<best){best=dp[mask];bm=mask}const assign=Array(6);let cur=bm;for(let s=5;s>=0;s--){assign[s]=parA[cur];cur=parM[cur]}return{best,assign}}
+
+function addMap(map,k){map.set(k,(map.get(k)||0)+1)}
+function statsFromMap(map,n){let sum=0,sum2=0;const arr=[...map.entries()].sort((a,b)=>a[0]-b[0]);for(const [x,c] of arr){sum+=x*c;sum2+=x*x*c}const mean=sum/n,sd=Math.sqrt(Math.max(0,sum2/n-mean*mean));function q(fr){let acc=0,target=fr*n;for(const [x,c] of arr){acc+=c;if(acc>=target)return x}return arr.at(-1)?.[0]??0}return{mean,sd,q05:q(.05),q95:q(.95),arr}}
+async function simulateFinal(assignEnabled, enabled, trials, seed, rMode) {
+  const rng = makeRng(seed);
+  const secMaps = SECTIONS.map(() => new Map());
+  const totalMap = new Map();
+  const secSum = new Float64Array(6);
+  let totalSum = 0;
+  const chunk = 400;
+  for (let t = 0; t < trials; t++) {
+    const R = sampleR(rMode, rng);
+    let total = 0;
+    for (let s = 0; s < 6; s++) {
+      const a = enabled[assignEnabled[s]].ath;
+      const x = baseStatus(a, SECTIONS[s]) + R;
+      const tm = srMinSample(x, SECTIONS[s], rng);
+      secSum[s] += tm;
+      total += tm;
+      addMap(secMaps[s], tm);
+    }
+    totalSum += total;
+    addMap(totalMap, total);
+    if ((t + 1) % chunk === 0) {
+      setProgress(.62 + .38 * (t + 1) / trials, `最終分布を計算中… ${(t + 1).toLocaleString()} / ${trials.toLocaleString()}`);
+      await breathe();
+    }
+  }
+  return { secMaps, totalMap, secMean: Array.from(secSum, x => x / trials), totalMean: totalSum / trials };
+}
+
+function fmtTime(v,dec=2){if(!Number.isFinite(v))return'-';const neg=v<0;v=Math.abs(v);const h=Math.floor(v/3600),m=Math.floor(v%3600/60),s=v%60;const sf=s.toFixed(dec).padStart(dec?3+dec:2,'0');return(neg?'-':'')+(h?`${h}:${String(m).padStart(2,'0')}:${sf}`:`${m}:${sf}`)}
+function fmtIntTime(v){return fmtTime(v,0)}
+function renderMatrix(enabled,matrix){const t=$('#matrixTable');t.innerHTML='<thead><tr><th>選手</th>'+SECTIONS.map(s=>`<th>${s.name}</th>`).join('')+'</tr></thead><tbody>'+enabled.map((e,i)=>`<tr><td>${escapeHtml(e.ath.name)}</td>${matrix[i].map(v=>`<td>${fmtTime(v,2)}<br><span class="tiny">${v.toFixed(2)}s</span></td>`).join('')}</tr>`).join('')+'</tbody>'}
+
+function renderChart(canvas,map,n,mean){const arr=[...map.entries()].sort((a,b)=>a[0]-b[0]);if(!arr.length)return;const dpr=devicePixelRatio||1,w=Math.max(360,canvas.clientWidth),h=210;canvas.width=w*dpr;canvas.height=h*dpr;const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);const pad={l:52,r:14,t:14,b:34},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;const min=arr[0][0],max=arr.at(-1)[0],span=Math.max(1,max-min);let ymax=0;const probs=new Map();for(const [x,c] of arr){const p=c/n;probs.set(x,p);if(p>ymax)ymax=p}ymax*=1.12;ctx.strokeStyle='#27313b';ctx.lineWidth=1;ctx.fillStyle='#8695a5';ctx.font='10px ui-monospace,monospace';ctx.textAlign='right';ctx.textBaseline='middle';for(let j=0;j<=4;j++){const y=pad.t+ih*j/4;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();const pv=ymax*(1-j/4)*100;ctx.fillText(pv.toFixed(pv<1?2:1)+'%',pad.l-6,y)}ctx.textAlign='center';ctx.textBaseline='top';for(let j=0;j<=4;j++){const x=pad.l+iw*j/4,sv=Math.round(min+span*j/4);ctx.fillText(fmtIntTime(sv),x,h-pad.b+8)}ctx.strokeStyle='#67b7ff';ctx.lineWidth=1.6;ctx.beginPath();let first=true;for(let sec=min;sec<=max;sec++){const px=pad.l+(sec-min)/span*iw,py=pad.t+ih-(probs.get(sec)||0)/ymax*ih;if(first){ctx.moveTo(px,py);first=false}else ctx.lineTo(px,py)}ctx.stroke();ctx.strokeStyle='#71d39a';ctx.setLineDash([4,4]);const mx=pad.l+(mean-min)/span*iw;ctx.beginPath();ctx.moveTo(mx,pad.t);ctx.lineTo(mx,pad.t+ih);ctx.stroke();ctx.setLineDash([]);canvas._chart={min,max,span,pad,iw,probs,n};const box=canvas.parentElement,tip=box.querySelector('.tooltip');canvas.onmousemove=e=>{const r=canvas.getBoundingClientRect(),xx=e.clientX-r.left;let sec=Math.round(min+((xx-pad.l)/iw)*span);sec=Math.max(min,Math.min(max,sec));tip.style.display='block';tip.textContent=`${fmtIntTime(sec)} / ${((probs.get(sec)||0)*100).toFixed(3)}%`;tip.style.left=Math.min(box.clientWidth-150,Math.max(4,xx+10))+'px';tip.style.top='8px'};canvas.onmouseleave=()=>tip.style.display='none'}
+
+function buildSectionBlocks(enabled,assign,finalRes,trials){const root=$('#sectionCharts');root.innerHTML='';for(let s=0;s<6;s++){const e=enabled[assign[s]],sec=SECTIONS[s],st=statsFromMap(finalRes.secMaps[s],trials),base=baseStatus(e.ath,sec);const div=document.createElement('div');div.className='section-block';div.innerHTML=`<div class="section-title"><strong>${sec.name} — ${escapeHtml(e.ath.name)}</strong><span>${fmtTime(st.mean,2)} (${st.mean.toFixed(2)}s)</span></div><div class="formula">基礎status ${base.toFixed(3)} / SD ${st.sd.toFixed(2)}秒 / 5–95% ${fmtIntTime(st.q05)}–${fmtIntTime(st.q95)}</div><div class="chartbox"><canvas></canvas><div class="tooltip"></div></div>`;root.appendChild(div);renderChart(div.querySelector('canvas'),finalRes.secMaps[s],trials,st.mean)}}
+
+async function run(){syncAthletes();const enabled=athletes.map((ath,idx)=>({ath,idx})).filter(x=>x.ath.enabled);if(enabled.length<6){$('#status').textContent='使用する選手を6人以上にしてください。';return}const optTrials=Math.max(200,Math.floor(+$('#optTrials').value||2500)),finalTrials=Math.max(1000,Math.floor(+$('#finalTrials').value||30000)),seed=(+$('#mcSeed').value>>>0),rMode=$('#rMode').value;const btn=$('#runBtn');btn.disabled=true;try{setProgress(0,'選手×区間の期待値を計算中…');const matrix=Array.from({length:enabled.length},()=>Array(6).fill(0));let done=0,total=enabled.length*6;for(let i=0;i<enabled.length;i++)for(let s=0;s<6;s++){matrix[i][s]=await estimateCell(enabled[i].ath,SECTIONS[s],optTrials,hash32(seed,'cell',enabled[i].idx,s),rMode);done++;setProgress(.60*done/total,`期待値行列を計算中… ${done}/${total}`);await breathe()}const opt=optimizeAssignment(matrix);setProgress(.61,'最適配置が決定。最終分布を計算します…');const finalRes=await simulateFinal(opt.assign,enabled,finalTrials,hash32(seed,'finalRes'),rMode);lastResult={enabled,matrix,opt,finalRes,finalTrials};renderResults();setProgress(1,`完了。最適化 ${optTrials.toLocaleString()}試行/セル、最終分布 ${finalTrials.toLocaleString()}試行。`);saveMaybe()}catch(e){console.error(e);$('#status').textContent='エラー: '+(e?.message||e)}finally{btn.disabled=false}}
+
+function renderResults(){const {enabled,matrix,opt,finalRes,finalTrials}=lastResult;$('#results').classList.remove('hidden');$('#bestExpected').textContent=fmtTime(opt.best,2);$('#bestExpectedSec').textContent=`(${opt.best.toFixed(2)} 秒・最適化行列の和)`;const tb=$('#lineupBody');tb.innerHTML='';for(let s=0;s<6;s++){const e=enabled[opt.assign[s]],sec=SECTIONS[s],base=baseStatus(e.ath,sec),corr=corrFor(e.ath,sec);const tr=document.createElement('tr');tr.innerHTML=`<td>${sec.name}</td><td>${escapeHtml(e.ath.name)}</td><td>${base.toFixed(3)}</td><td>${corr>0?'+':''}${corr}</td><td>${fmtTime(matrix[opt.assign[s]][s],2)} (${matrix[opt.assign[s]][s].toFixed(2)}s)</td><td>${fmtTime(finalRes.secMean[s],2)} (${finalRes.secMean[s].toFixed(2)}s)</td>`;tb.appendChild(tr)}renderMatrix(enabled,matrix);const ts=statsFromMap(finalRes.totalMap,finalTrials);$('#totalMean').textContent=`${fmtTime(ts.mean,2)} (${ts.mean.toFixed(2)}s)`;$('#totalSd').textContent=`${ts.sd.toFixed(2)} 秒`;$('#totalRange').textContent=`${fmtIntTime(ts.q05)} – ${fmtIntTime(ts.q95)}`;renderChart($('#totalChart'),finalRes.totalMap,finalTrials,ts.mean);buildSectionBlocks(enabled,opt.assign,finalRes,finalTrials);$('#results').scrollIntoView({behavior:'smooth',block:'start'})}
+
+$('#preset').addEventListener('change',e=>{const v=e.target.value;if(v==='fast'){optTrials.value=800;finalTrials.value=8000}else if(v==='high'){optTrials.value=8000;finalTrials.value=100000}else{optTrials.value=2500;finalTrials.value=30000}saveMaybe()});
+$('#runBtn').addEventListener('click',run);['rMode','optTrials','finalTrials','mcSeed'].forEach(id=>$('#'+id).addEventListener('input',saveMaybe));
+$('#resetBtn').addEventListener('click',()=>{if(!confirm('入力を初期値へ戻しますか？'))return;athletes=structuredClone(defaultAthletes);renderAthletes();$('#rMode').value='other';$('#preset').value='standard';$('#optTrials').value=2500;$('#finalTrials').value=30000;$('#mcSeed').value=123456789;saveMaybe()});
+$('#exportBtn').addEventListener('click',()=>{const blob=new Blob([JSON.stringify(currentConfig(),null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='izumo_config.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)});
+$('#importBtn').addEventListener('click',()=>$('#importFile').click());$('#importFile').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{applyConfig(JSON.parse(await f.text()));saveMaybe()}catch{alert('JSONを読み込めませんでした。')}e.target.value=''});
+window.addEventListener('resize',()=>{if(lastResult)renderResults()});
+loadSaved();
+</script>
+</body>
+</html>
