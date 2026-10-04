@@ -1,0 +1,1 @@
+{"name":"sigma-lab","version":"1.0.0","private":true,"description":"Exact combinatorial calculator and conjecture explorer","scripts":{"start":"node server.cjs","test":"node test.cjs"},"engines":{"node":">=18"}}
